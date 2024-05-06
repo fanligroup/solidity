@@ -6,7 +6,7 @@ Language Features:
 Compiler Features:
  * EVM: Support for the EVM version "Prague".
  * SMTChecker: Add CHC engine check for underflow and overflow in unary minus operation.
-
+ * SMTChecker: Replace CVC4 as a possible BMC backend with cvc5.
 
 Bugfixes:
 Yul Optimizer: Name simplification could lead to forbidden identifiers with a leading and/or trailing dot, e.g., ``x._`` would get simplified into ``x.``.
