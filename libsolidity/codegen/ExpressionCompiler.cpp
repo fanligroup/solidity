@@ -1248,8 +1248,8 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 		case FunctionType::Kind::Assert:
 		case FunctionType::Kind::Require:
 		{
+			// stack: <condition>
 			acceptAndConvert(*arguments.front(), *function.parameterTypes().front(), false);
-
 			bool haveReasonString = arguments.size() > 1 && m_context.revertStrings() != RevertStrings::Strip;
 
 			if (arguments.size() > 1)
@@ -1263,7 +1263,36 @@ bool ExpressionCompiler::visit(FunctionCall const& _functionCall)
 				// as require with custom errors is not supported in legacy codegen.
 				auto const* magicType = dynamic_cast<MagicType const*>(arguments[1]->annotation().type);
 				if (magicType && magicType->kind() == MagicType::Kind::Error)
-					solUnimplemented("Require with a custom error is only available using the via-ir pipeline.");
+				{
+					// Make sure that error constructor arguments are evaluated regardless of the require condition
+					auto const& errorConstructorCall = dynamic_cast<FunctionCall const&>(*arguments[1]);
+					errorConstructorCall.expression().accept(*this);
+					std::vector<Type const*> argumentTypes{};
+					unsigned stackDepth{0};
+					for (ASTPointer<Expression const> const& arg: errorConstructorCall.sortedArguments())
+					{
+						arg->accept(*this);
+						stackDepth += arg->annotation().type->sizeOnStack();
+						argumentTypes.push_back(arg->annotation().type);
+					}
+					// stack: <condition> <arg0> <arg1> ... <argN>
+					// Move condition to the top of the stack
+					utils().moveIntoStack(arguments.at(0)->annotation().type->sizeOnStack(), stackDepth);
+					// stack: <arg0> <arg1> ... <argN> <condition>
+					m_context << Instruction::ISZERO << Instruction::ISZERO;
+					auto success = m_context.appendConditionalJump();
+
+					auto const* errorDefinition = dynamic_cast<ErrorDefinition const*>(ASTNode::referencedDeclaration(errorConstructorCall.expression()));
+					solAssert(errorDefinition && errorDefinition->functionType(true));
+
+					utils().revertWithError(
+						errorDefinition->functionType(true)->externalSignature(),
+						errorDefinition->functionType(true)->parameterTypes(),
+						argumentTypes
+					);
+					m_context << success;
+					break;
+				}
 
 				if (m_context.revertStrings() == RevertStrings::Strip)
 				{
