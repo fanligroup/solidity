@@ -229,9 +229,9 @@ ControlFlowSideEffectsCollector::ControlFlowSideEffectsCollector(
 	}
 }
 
-std::map<YulString, ControlFlowSideEffects> ControlFlowSideEffectsCollector::functionSideEffectsNamed() const
+std::map<YulName, ControlFlowSideEffects> ControlFlowSideEffectsCollector::functionSideEffectsNamed() const
 {
-	std::map<YulString, ControlFlowSideEffects> result;
+	std::map<YulName, ControlFlowSideEffects> result;
 	for (auto&& [function, sideEffects]: m_functionSideEffects)
 		yulAssert(result.insert({function->name, sideEffects}).second);
 	return result;
@@ -271,8 +271,8 @@ ControlFlowNode const* ControlFlowSideEffectsCollector::nextProcessableNode(Func
 
 ControlFlowSideEffects const& ControlFlowSideEffectsCollector::sideEffects(FunctionCall const& _call) const
 {
-	if (auto const* builtin = m_dialect.builtin(_call.functionName.name))
-		return builtin->controlFlowSideEffects;
+	if (std::optional<BuiltinHandle> builtinHandle = m_dialect.findBuiltin(_call.functionName.name.str()))
+		return m_dialect.builtin(*builtinHandle).controlFlowSideEffects;
 	else
 		return m_functionSideEffects.at(m_functionReferences.at(&_call));
 }

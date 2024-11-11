@@ -40,7 +40,7 @@ using namespace solidity::yul;
 SideEffectsCollector::SideEffectsCollector(
 		Dialect const& _dialect,
 		Expression const& _expression,
-		std::map<YulString, SideEffects> const* _functionSideEffects
+		std::map<YulName, SideEffects> const* _functionSideEffects
 ):
 	SideEffectsCollector(_dialect, _functionSideEffects)
 {
@@ -56,7 +56,7 @@ SideEffectsCollector::SideEffectsCollector(Dialect const& _dialect, Statement co
 SideEffectsCollector::SideEffectsCollector(
 	Dialect const& _dialect,
 	Block const& _ast,
-	std::map<YulString, SideEffects> const* _functionSideEffects
+	std::map<YulName, SideEffects> const* _functionSideEffects
 ):
 	SideEffectsCollector(_dialect, _functionSideEffects)
 {
@@ -66,7 +66,7 @@ SideEffectsCollector::SideEffectsCollector(
 SideEffectsCollector::SideEffectsCollector(
 	Dialect const& _dialect,
 	ForLoop const& _ast,
-	std::map<YulString, SideEffects> const* _functionSideEffects
+	std::map<YulName, SideEffects> const* _functionSideEffects
 ):
 	SideEffectsCollector(_dialect, _functionSideEffects)
 {
@@ -77,9 +77,9 @@ void SideEffectsCollector::operator()(FunctionCall const& _functionCall)
 {
 	ASTWalker::operator()(_functionCall);
 
-	YulString functionName = _functionCall.functionName.name;
-	if (BuiltinFunction const* f = m_dialect.builtin(functionName))
-		m_sideEffects += f->sideEffects;
+	YulName functionName = _functionCall.functionName.name;
+	if (std::optional<BuiltinHandle> builtinHandle = m_dialect.findBuiltin(functionName.str()))
+		m_sideEffects += m_dialect.builtin(*builtinHandle).sideEffects;
 	else if (m_functionSideEffects && m_functionSideEffects->count(functionName))
 		m_sideEffects += m_functionSideEffects->at(functionName);
 	else
@@ -95,7 +95,7 @@ bool MSizeFinder::containsMSize(Dialect const& _dialect, Block const& _ast)
 
 bool MSizeFinder::containsMSize(Dialect const& _dialect, Object const& _object)
 {
-	if (containsMSize(_dialect, *_object.code))
+	if (containsMSize(_dialect, _object.code()->root()))
 		return true;
 
 	for (std::shared_ptr<ObjectNode> const& node: _object.subObjects)
@@ -110,12 +110,12 @@ void MSizeFinder::operator()(FunctionCall const& _functionCall)
 {
 	ASTWalker::operator()(_functionCall);
 
-	if (BuiltinFunction const* f = m_dialect.builtin(_functionCall.functionName.name))
-		if (f->isMSize)
+	if (std::optional<BuiltinHandle> builtinHandle = m_dialect.findBuiltin(_functionCall.functionName.name.str()))
+		if (m_dialect.builtin(*builtinHandle).isMSize)
 			m_msizeFound = true;
 }
 
-std::map<YulString, SideEffects> SideEffectsPropagator::sideEffects(
+std::map<YulName, SideEffects> SideEffectsPropagator::sideEffects(
 	Dialect const& _dialect,
 	CallGraph const& _directCallGraph
 )
@@ -126,7 +126,7 @@ std::map<YulString, SideEffects> SideEffectsPropagator::sideEffects(
 	// In the future, we should refine that, because the property
 	// is actually a bit different from "not movable".
 
-	std::map<YulString, SideEffects> ret;
+	std::map<YulName, SideEffects> ret;
 	for (auto const& function: _directCallGraph.functionsWithLoops + _directCallGraph.recursiveFunctions())
 	{
 		ret[function].movable = false;
@@ -137,20 +137,20 @@ std::map<YulString, SideEffects> SideEffectsPropagator::sideEffects(
 
 	for (auto const& call: _directCallGraph.functionCalls)
 	{
-		YulString funName = call.first;
+		YulName funName = call.first;
 		SideEffects sideEffects;
-		auto _visit = [&, visited = std::set<YulString>{}](YulString _function, auto&& _recurse) mutable {
+		auto _visit = [&, visited = std::set<YulName>{}](YulName _function, auto&& _recurse) mutable {
 			if (!visited.insert(_function).second)
 				return;
 			if (sideEffects == SideEffects::worst())
 				return;
-			if (BuiltinFunction const* f = _dialect.builtin(_function))
-				sideEffects += f->sideEffects;
+			if (std::optional<BuiltinHandle> builtinHandle = _dialect.findBuiltin(_function.str()))
+				sideEffects += _dialect.builtin(*builtinHandle).sideEffects;
 			else
 			{
 				if (ret.count(_function))
 					sideEffects += ret[_function];
-				for (YulString callee: _directCallGraph.functionCalls.at(_function))
+				for (YulName callee: _directCallGraph.functionCalls.at(_function))
 					_recurse(callee, _recurse);
 			}
 		};
@@ -227,8 +227,8 @@ bool TerminationFinder::containsNonContinuingFunctionCall(Expression const& _exp
 			if (containsNonContinuingFunctionCall(arg))
 				return true;
 
-		if (auto builtin = m_dialect.builtin(functionCall->functionName.name))
-			return !builtin->controlFlowSideEffects.canContinue;
+		if (std::optional<BuiltinHandle> const builtinHandle = m_dialect.findBuiltin(functionCall->functionName.name.str()))
+			return !m_dialect.builtin(*builtinHandle).controlFlowSideEffects.canContinue;
 		else if (m_functionSideEffects && m_functionSideEffects->count(functionCall->functionName.name))
 			return !m_functionSideEffects->at(functionCall->functionName.name).canContinue;
 	}

@@ -123,9 +123,19 @@ void EthAssemblyAdapter::appendAssemblySize()
 
 std::pair<std::shared_ptr<AbstractAssembly>, AbstractAssembly::SubID> EthAssemblyAdapter::createSubAssembly(bool _creation, std::string _name)
 {
-	std::shared_ptr<evmasm::Assembly> assembly{std::make_shared<evmasm::Assembly>(m_assembly.evmVersion(), _creation, std::move(_name))};
+	std::shared_ptr<evmasm::Assembly> assembly{std::make_shared<evmasm::Assembly>(m_assembly.evmVersion(), _creation, m_assembly.eofVersion(), std::move(_name))};
 	auto sub = m_assembly.newSub(assembly);
 	return {std::make_shared<EthAssemblyAdapter>(*assembly), static_cast<size_t>(sub.data())};
+}
+
+void EthAssemblyAdapter::appendEOFCreate(ContainerID _containerID)
+{
+	m_assembly.appendEOFCreate(_containerID);
+}
+
+void EthAssemblyAdapter::appendReturnContract(ContainerID _containerID)
+{
+	m_assembly.appendReturnContract(_containerID);
 }
 
 void EthAssemblyAdapter::appendDataOffset(std::vector<AbstractAssembly::SubID> const& _subPath)
@@ -173,6 +183,11 @@ void EthAssemblyAdapter::appendImmutable(std::string const& _identifier)
 void EthAssemblyAdapter::appendImmutableAssignment(std::string const& _identifier)
 {
 	m_assembly.appendImmutableAssignment(_identifier);
+}
+
+void EthAssemblyAdapter::appendAuxDataLoadN(uint16_t _offset)
+{
+	m_assembly.appendAuxDataLoadN(_offset);
 }
 
 void EthAssemblyAdapter::markAsInvalid()

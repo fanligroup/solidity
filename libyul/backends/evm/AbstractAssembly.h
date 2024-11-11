@@ -56,6 +56,7 @@ class AbstractAssembly
 public:
 	using LabelID = size_t;
 	using SubID = size_t;
+	using ContainerID = uint8_t;
 	enum class JumpType { Ordinary, IntoFunction, OutOfFunction };
 
 	virtual ~AbstractAssembly() = default;
@@ -112,7 +113,18 @@ public:
 	/// Appends an assignment to an immutable variable.
 	virtual void appendImmutableAssignment(std::string const& _identifier) = 0;
 
+	/// Appends an operation that loads 32 bytes of data from a known offset relative to the start of the static_aux_data area of the EOF data section.
+	/// Note that static_aux_data is only a part or the data section.
+	/// It is preceded by the pre_deploy_data, whose size is not determined before the bytecode is assembled, and which cannot be accessed using this function.
+	/// The function is meant to allow indexing into static_aux_data in a way that's independent of the size of pre_deploy_data.
+	virtual void appendAuxDataLoadN(uint16_t _offset) = 0;
+
+	/// Appends EOF contract creation instruction which takes creation code from subcontainer with _containerID.
+	virtual void appendEOFCreate(ContainerID _containerID) = 0;
+	/// Appends EOF contract return instruction which returns a subcontainer ID (_containerID) with auxiliary data filled in.
+	virtual void appendReturnContract(ContainerID _containerID) = 0;
 	/// Appends data to the very end of the bytecode. Repeated calls concatenate.
+	/// EOF auxiliary data in data section and the auxiliary data are different things.
 	virtual void appendToAuxiliaryData(bytes const& _data) = 0;
 
 	/// Mark this assembly as invalid. Any attempt to request bytecode from it should throw.

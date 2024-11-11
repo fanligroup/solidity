@@ -22,7 +22,7 @@
 #pragma once
 
 #include <libyul/ASTForward.h>
-#include <libyul/YulString.h>
+#include <libyul/YulName.h>
 #include <libyul/optimiser/OptimiserStep.h>
 #include <libyul/optimiser/NameDispenser.h>
 #include <liblangutil/EVMVersion.h>
@@ -38,7 +38,7 @@ namespace solidity::yul
 struct AsmAnalysisInfo;
 struct Dialect;
 class GasMeter;
-struct Object;
+class Object;
 
 /**
  * Optimiser suite that combines all steps and also provides the settings for the heuristics.
@@ -70,7 +70,7 @@ public:
 		std::string_view _optimisationSequence,
 		std::string_view _optimisationCleanupSequence,
 		std::optional<size_t> _expectedExecutionsPerDeployment,
-		std::set<YulString> const& _externallyUsedIdentifiers = {}
+		std::set<YulName> const& _externallyUsedIdentifiers = {}
 	);
 
 	/// Ensures that specified sequence of step abbreviations is well-formed and can be executed.
@@ -91,9 +91,6 @@ public:
 private:
 	OptimiserStepContext& m_context;
 	Debug m_debug;
-#ifdef PROFILE_OPTIMIZER_STEPS
-	std::map<std::string, int64_t> m_durationPerStepInMicroseconds;
-#endif
 };
 
 }

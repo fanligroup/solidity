@@ -56,17 +56,22 @@ ControlFlowSideEffectsTest::ControlFlowSideEffectsTest(std::string const& _filen
 
 TestCase::TestResult ControlFlowSideEffectsTest::run(std::ostream& _stream, std::string const& _linePrefix, bool _formatted)
 {
-	Object obj;
-	std::tie(obj.code, obj.analysisInfo) = yul::test::parse(m_source, false);
-	if (!obj.code)
+	auto const& dialect = EVMDialect::strictAssemblyForEVMObjects(
+		solidity::test::CommonOptions::get().evmVersion(),
+		solidity::test::CommonOptions::get().eofVersion()
+	);
+	Object obj{dialect};
+	auto parsingResult = yul::test::parse(m_source);
+	obj.setCode(parsingResult.first, parsingResult.second);
+	if (!obj.hasCode())
 		BOOST_THROW_EXCEPTION(std::runtime_error("Parsing input failed."));
 
 	ControlFlowSideEffectsCollector sideEffects(
-		EVMDialect::strictAssemblyForEVMObjects(langutil::EVMVersion()),
-		*obj.code
+		dialect,
+		obj.code()->root()
 	);
 	m_obtainedResult.clear();
-	forEach<FunctionDefinition const>(*obj.code, [&](FunctionDefinition const& _fun) {
+	forEach<FunctionDefinition const>(obj.code()->root(), [&](FunctionDefinition const& _fun) {
 		std::string effectStr = toString(sideEffects.functionSideEffects().at(&_fun));
 		m_obtainedResult += _fun.name.str() + (effectStr.empty() ? ":" : ": " + effectStr) + "\n";
 	});

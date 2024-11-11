@@ -451,7 +451,7 @@ bool ControlFlowBuilder::visit(InlineAssembly const& _inlineAssembly)
 	solAssert(!!m_currentNode && !m_inlineAssembly, "");
 
 	m_inlineAssembly = &_inlineAssembly;
-	(*this)(_inlineAssembly.operations());
+	(*this)(_inlineAssembly.operations().root());
 	m_inlineAssembly = nullptr;
 
 	return false;
@@ -582,13 +582,14 @@ void ControlFlowBuilder::operator()(yul::FunctionCall const& _functionCall)
 	solAssert(m_currentNode && m_inlineAssembly, "");
 	yul::ASTWalker::operator()(_functionCall);
 
-	if (auto const *builtinFunction = m_inlineAssembly->dialect().builtin(_functionCall.functionName.name))
+	if (auto const& builtinHandle = m_inlineAssembly->dialect().findBuiltin(_functionCall.functionName.name.str()))
 	{
-		if (builtinFunction->controlFlowSideEffects.canTerminate)
+		auto const& builtinFunction = m_inlineAssembly->dialect().builtin(*builtinHandle);
+		if (builtinFunction.controlFlowSideEffects.canTerminate)
 			connect(m_currentNode, m_transactionReturnNode);
-		if (builtinFunction->controlFlowSideEffects.canRevert)
+		if (builtinFunction.controlFlowSideEffects.canRevert)
 			connect(m_currentNode, m_revertNode);
-		if (!builtinFunction->controlFlowSideEffects.canContinue)
+		if (!builtinFunction.controlFlowSideEffects.canContinue)
 			m_currentNode = newLabel();
 	}
 }

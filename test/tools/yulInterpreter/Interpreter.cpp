@@ -131,7 +131,7 @@ void Interpreter::operator()(Assignment const& _assignment)
 	solAssert(values.size() == _assignment.variableNames.size(), "");
 	for (size_t i = 0; i < values.size(); ++i)
 	{
-		YulString varName = _assignment.variableNames.at(i).name;
+		YulName varName = _assignment.variableNames.at(i).name;
 		solAssert(m_variables.count(varName), "");
 		m_variables[varName] = values.at(i);
 	}
@@ -146,7 +146,7 @@ void Interpreter::operator()(VariableDeclaration const& _declaration)
 	solAssert(values.size() == _declaration.variables.size(), "");
 	for (size_t i = 0; i < values.size(); ++i)
 	{
-		YulString varName = _declaration.variables.at(i).name;
+		YulName varName = _declaration.variables.at(i).name;
 		solAssert(!m_variables.count(varName), "");
 		m_variables[varName] = values.at(i);
 		m_scope->names.emplace(varName, nullptr);
@@ -296,10 +296,7 @@ void Interpreter::incrementStep()
 void ExpressionEvaluator::operator()(Literal const& _literal)
 {
 	incrementStep();
-	static YulString const trueString("true");
-	static YulString const falseString("false");
-
-	setValue(valueOfLiteral(_literal));
+	setValue(_literal.value.value());
 }
 
 void ExpressionEvaluator::operator()(Identifier const& _identifier)
@@ -312,25 +309,29 @@ void ExpressionEvaluator::operator()(Identifier const& _identifier)
 void ExpressionEvaluator::operator()(FunctionCall const& _funCall)
 {
 	std::vector<std::optional<LiteralKind>> const* literalArguments = nullptr;
-	if (BuiltinFunction const* builtin = m_dialect.builtin(_funCall.functionName.name))
-		if (!builtin->literalArguments.empty())
-			literalArguments = &builtin->literalArguments;
+	if (std::optional<BuiltinHandle> builtinHandle = m_dialect.findBuiltin(_funCall.functionName.name.str()))
+		if (
+			auto const& args = m_dialect.builtin(*builtinHandle).literalArguments;
+			!args.empty()
+		)
+			literalArguments = &args;
 	evaluateArgs(_funCall.arguments, literalArguments);
 
 	if (EVMDialect const* dialect = dynamic_cast<EVMDialect const*>(&m_dialect))
 	{
-		if (BuiltinFunctionForEVM const* fun = dialect->builtin(_funCall.functionName.name))
+		if (std::optional<BuiltinHandle> builtinHandle = dialect->findBuiltin(_funCall.functionName.name.str()))
 		{
+			auto const& fun = dialect->builtin(*builtinHandle);
 			EVMInstructionInterpreter interpreter(dialect->evmVersion(), m_state, m_disableMemoryTrace);
 
-			u256 const value = interpreter.evalBuiltin(*fun, _funCall.arguments, values());
+			u256 const value = interpreter.evalBuiltin(fun, _funCall.arguments, values());
 
 			if (
 				!m_disableExternalCalls &&
-				fun->instruction &&
-				evmasm::isCallInstruction(*fun->instruction)
+				fun.instruction &&
+				evmasm::isCallInstruction(*fun.instruction)
 			)
-				runExternalCall(*fun->instruction);
+				runExternalCall(*fun.instruction);
 
 			setValue(value);
 			return;
@@ -346,7 +347,7 @@ void ExpressionEvaluator::operator()(FunctionCall const& _funCall)
 	FunctionDefinition const* fun = scope->names.at(_funCall.functionName.name);
 	yulAssert(fun, "Function not found.");
 	yulAssert(m_values.size() == fun->parameters.size(), "");
-	std::map<YulString, u256> variables;
+	std::map<YulName, u256> variables;
 	for (size_t i = 0; i < fun->parameters.size(); ++i)
 		variables[fun->parameters.at(i).name] = m_values.at(i);
 	for (size_t i = 0; i < fun->returnVariables.size(); ++i)
@@ -389,16 +390,13 @@ void ExpressionEvaluator::evaluateArgs(
 			visit(expr);
 		else
 		{
-			std::string literal = std::get<Literal>(expr).value.str();
-
-			try
+			if (std::get<Literal>(expr).value.unlimited())
 			{
-				m_values = {u256(literal)};
+				yulAssert(std::get<Literal>(expr).kind == LiteralKind::String);
+				m_values = {0xdeadbeef};
 			}
-			catch (std::exception&)
-			{
-				m_values = {u256(0)};
-			}
+			else
+				m_values = {std::get<Literal>(expr).value.value()};
 		}
 
 		values.push_back(value());
